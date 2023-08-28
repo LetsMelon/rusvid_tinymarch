@@ -1,9 +1,21 @@
 use std::f64::consts::PI;
 
 use image::{Rgb, RgbImage};
-use nalgebra::{distance, point, vector, Point3, Vector3};
+use nalgebra::{point, vector, Point3, Vector3};
 use rand::Rng;
 use rayon::prelude::{IndexedParallelIterator, IntoParallelIterator, ParallelIterator};
+
+pub mod math;
+pub mod rotations;
+pub mod sdf_operations;
+pub mod signed_distance_fields;
+pub mod vector;
+
+use sdf_operations::_smooth_subtraction;
+
+use crate::math::lerp;
+use crate::signed_distance_fields::_sphere;
+use crate::vector::{reflect, vec3};
 
 // ======================================================================
 // ======================= Data types & Constants =======================
@@ -67,9 +79,9 @@ pub fn render(res_x: usize, res_y: usize, samples: usize) {
                     color *= sample_scale;
                     color
                 })
-                .collect::<Vec<Color>>()
+                .collect()
         })
-        .collect::<Vec<Vec<Color>>>();
+        .collect();
 
     save_png(pixels, "output.png")
 }
@@ -162,28 +174,6 @@ pub fn eval(p: Point) -> f64 {
 ////////////////////////////////////////////////////////////////
 // Main reference: https://iquilezles.org/articles/distfunctions/
 
-pub fn _sphere(p: Point, c: Point, r: f64) -> f64 {
-    return distance(&p, &c) - r;
-}
-
-fn _rounded_box(p: Point, s: Vector, r: f64) -> f64 {
-    // Modified to account for the radius without changing the size of the box
-    let pf = vector![p.x.abs(), p.y.abs(), p.z.abs()] - (s - vec3(r));
-    return vector![pf.x.max(0.0), pf.y.max(0.0), pf.z.max(0.0)].norm()
-        + pf.x.max(pf.y.max(pf.z)).min(0.0)
-        - r;
-}
-
-fn _rounded_cylinder(p: Point, r1: f64, r2: f64, h: f64) -> f64 {
-    let d = vector![vector![p.x, p.z].norm() - 2.0 * r1 + r2, p.y.abs() - h];
-    return d.x.max(d.y).min(0.0) + vector![d.x.max(0.0), d.y.max(0.0)].norm() - r2;
-}
-
-fn _torus(p: Point, r1: f64, r2: f64) -> f64 {
-    let q = vector![vector![p.x, p.z].norm() - r1, p.y];
-    return q.norm() - r2;
-}
-
 // Gradient of a Signed Distance Field
 pub fn gradient(p: Point) -> Vector {
     let epsilon = 0.0001;
@@ -197,107 +187,6 @@ pub fn gradient(p: Point) -> Vector {
     let ddz = eval(p + dz) - eval(p - dz);
 
     vector![ddx, ddy, ddz].normalize()
-}
-
-////////////////////////////////////////////////////////////////
-// SDF Operations
-////////////////////////////////////////////////////////////////
-
-fn _boolean_union(d1: f64, d2: f64) -> f64 {
-    return d2.min(d1);
-}
-
-fn _boolean_subtraction(d1: f64, d2: f64) -> f64 {
-    return (-d2).max(d1);
-}
-
-fn _boolean_intersection(d1: f64, d2: f64) -> f64 {
-    return d1.max(d2);
-}
-
-fn _smooth_union(d1: f64, d2: f64, k: f64) -> f64 {
-    let h = clamp(0.5 + 0.5 * (d2 - d1) / k, 0.0, 1.0);
-    return lerp(d2, d1, h) - k * h * (1.0 - h);
-}
-
-fn _smooth_subtraction(d1: f64, d2: f64, k: f64) -> f64 {
-    let h = clamp(0.5 - 0.5 * (d2 + d1) / k, 0.0, 1.0);
-    return lerp(d1, -d2, h) + k * h * (1.0 - h);
-}
-
-fn _smooth_intersection(d1: f64, d2: f64, k: f64) -> f64 {
-    let h = clamp(0.5 - 0.5 * (d2 - d1) / k, 0.0, 1.0);
-    return lerp(d2, d1, h) + k * h * (1.0 - h);
-}
-
-////////////////////////////////////////////////////////////////
-// Vectors & Transforms
-////////////////////////////////////////////////////////////////
-
-// create a Vector3 with constant values
-pub fn vec3(a: f64) -> Vector {
-    vector![a, a, a]
-}
-
-//reflect an input vector about another (the sdf surface normal)
-pub fn reflect(v: Vector, normal: Vector) -> Vector {
-    return v - normal * 2.0 * v.dot(&normal);
-}
-
-pub fn mix_vectors(v1: Vector, v2: Vector, t: f64) -> Vector {
-    vector![
-        lerp(v1.x, v2.x, t),
-        lerp(v1.y, v2.y, t),
-        lerp(v1.z, v2.z, t)
-    ]
-}
-
-pub fn vector_max(v1: Vector, v2: Vector) -> Vector {
-    vector![v1.x.max(v2.x), v1.y.max(v2.y), v1.z.max(v2.z)]
-}
-
-pub fn multiply_vectors(v1: Vector, v2: Vector) -> Vector {
-    vector![v1.x * v2.x, v1.y * v2.y, v1.z * v2.z]
-}
-
-pub fn divide_vectors(v1: Vector, v2: Vector) -> Vector {
-    vector![v1.x * v2.x, v1.y * v2.y, v1.z * v2.z]
-}
-
-pub fn powf_vector(v: Vector, p: f64) -> Vector {
-    vector![v.x.powf(p), v.y.powf(p), v.z.powf(p)]
-}
-
-////////// Rotations //////////
-
-fn _rot_x(p: Point, a: f64) -> Point {
-    let s = a.sin();
-    let c = a.cos();
-
-    return point![p.x, p.y * c + p.z * s, -s * p.y + c * p.z];
-}
-
-fn _rot_y(p: Point, a: f64) -> Point {
-    let s = a.sin();
-    let c = a.cos();
-
-    return point![c * p.x + s * p.z, p.y, -s * p.x + c * p.z];
-}
-
-fn _rot_z(p: Point, a: f64) -> Point {
-    let s = a.sin();
-    let c = a.cos();
-
-    return point![c * p.x - s * p.y, s * p.x + c * p.y, p.z];
-}
-
-////////// Other Math //////////
-pub fn lerp(a: f64, b: f64, t: f64) -> f64 {
-    a + t * (b - a)
-}
-
-fn clamp(x: f64, a: f64, b: f64) -> f64 {
-    x.max(a).min(b)
 }
 
 ////////////////////////////////////////////////////////////////
