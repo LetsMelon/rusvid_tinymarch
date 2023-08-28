@@ -1,4 +1,5 @@
 use std::f64::consts::PI;
+
 use image::{Rgb, RgbImage};
 use nalgebra::{distance, point, vector, Point3, Vector3};
 use rand::Rng;
@@ -75,7 +76,6 @@ pub fn render(res_x: usize, res_y: usize, samples: usize) {
 
 // Ray direction
 fn ray_direction(uv: (f64, f64), ro: Point, rt: Point, res: (usize, usize)) -> Vector {
-
     // screen orientation
     let vup = vector![0., 1.0, 0.0];
     let aspect_ratio = (res.0 as f64) / (res.1 as f64);
@@ -112,17 +112,17 @@ pub fn ray_march(ro: Point, rd: Vector) -> f64 {
 
 fn simple_shading(p: Point, rd: Vector) -> Color {
     let n = gradient(p);
-    let mut color = vector![0.2,0.8,1.];
+    let mut color = vector![0.2, 0.8, 1.];
 
     // lighting
-    let light1 = n.dot(&vector![1., -1., -1.].normalize())*0.5+0.5;
-    let light2 = n.dot(&vector![-1., -1., -1.].normalize())*0.5+0.5;
+    let light1 = n.dot(&vector![1., -1., -1.].normalize()) * 0.5 + 0.5;
+    let light2 = n.dot(&vector![-1., -1., -1.].normalize()) * 0.5 + 0.5;
     let illumination = 0.5 * light1 + 0.5 * light2;
 
     // fake fresnel
     let n_dot_v = n.dot(&rd) + 1.;
     let fresnel = n_dot_v * n_dot_v * 0.45;
-    
+
     // Specular highlights
     let r = reflect(vector![1., 0., 0.].normalize(), n);
     let specular = vec3(1.0) * r.dot(&rd).max(0.0).powf(10.0) * 0.08;
@@ -132,18 +132,17 @@ fn simple_shading(p: Point, rd: Vector) -> Color {
     color += specular;
 
     return color;
-
 }
 
 // Environment
 pub fn sky(uv: (f64, f64)) -> Color {
-    // Background 
-    let mut c = vector![0.1,0.7,1.];
+    // Background
+    let mut c = vector![0.1, 0.7, 1.];
 
     c += vec3(lerp(0.2, 0.4, 1.0 - uv.1));
     c += vec3(lerp(0.2, 0.4, uv.0));
 
-    return c
+    return c;
 }
 
 ////////////////////////////////////////////////////////////////
@@ -169,18 +168,20 @@ pub fn _sphere(p: Point, c: Point, r: f64) -> f64 {
 
 fn _rounded_box(p: Point, s: Vector, r: f64) -> f64 {
     // Modified to account for the radius without changing the size of the box
-    let pf = vector![p.x.abs(), p.y.abs(), p.z.abs()] - (s-vec3(r));
-    return vector![pf.x.max(0.0),pf.y.max(0.0),pf.z.max(0.0)].norm() + pf.x.max(pf.y.max(pf.z)).min(0.0) - r;
+    let pf = vector![p.x.abs(), p.y.abs(), p.z.abs()] - (s - vec3(r));
+    return vector![pf.x.max(0.0), pf.y.max(0.0), pf.z.max(0.0)].norm()
+        + pf.x.max(pf.y.max(pf.z)).min(0.0)
+        - r;
 }
 
 fn _rounded_cylinder(p: Point, r1: f64, r2: f64, h: f64) -> f64 {
-    let d = vector![vector![p.x, p.z].norm()-2.0*r1+r2, p.y.abs() - h];
-    return d.x.max(d.y).min(0.0) + vector![d.x.max(0.0), d.y.max(0.0)].norm() - r2
+    let d = vector![vector![p.x, p.z].norm() - 2.0 * r1 + r2, p.y.abs() - h];
+    return d.x.max(d.y).min(0.0) + vector![d.x.max(0.0), d.y.max(0.0)].norm() - r2;
 }
 
-fn _torus( p: Point, r1: f64, r2: f64 ) -> f64 {
-  let q = vector![vector![p.x, p.z].norm()-r1, p.y];
-  return q.norm()-r2;
+fn _torus(p: Point, r1: f64, r2: f64) -> f64 {
+    let q = vector![vector![p.x, p.z].norm() - r1, p.y];
+    return q.norm() - r2;
 }
 
 // Gradient of a Signed Distance Field
@@ -203,30 +204,30 @@ pub fn gradient(p: Point) -> Vector {
 ////////////////////////////////////////////////////////////////
 
 fn _boolean_union(d1: f64, d2: f64) -> f64 {
-    return d2.min(d1)
+    return d2.min(d1);
 }
 
 fn _boolean_subtraction(d1: f64, d2: f64) -> f64 {
-    return (-d2).max(d1)
+    return (-d2).max(d1);
 }
 
 fn _boolean_intersection(d1: f64, d2: f64) -> f64 {
-    return d1.max(d2)
+    return d1.max(d2);
 }
 
 fn _smooth_union(d1: f64, d2: f64, k: f64) -> f64 {
-    let h = clamp( 0.5 + 0.5*(d2-d1)/k, 0.0, 1.0 );
-    return lerp( d2, d1, h ) - k*h*(1.0-h);
+    let h = clamp(0.5 + 0.5 * (d2 - d1) / k, 0.0, 1.0);
+    return lerp(d2, d1, h) - k * h * (1.0 - h);
 }
 
 fn _smooth_subtraction(d1: f64, d2: f64, k: f64) -> f64 {
-    let h = clamp( 0.5 - 0.5*(d2+d1)/k, 0.0, 1.0 );
-    return lerp( d1, -d2, h ) + k*h*(1.0-h);
+    let h = clamp(0.5 - 0.5 * (d2 + d1) / k, 0.0, 1.0);
+    return lerp(d1, -d2, h) + k * h * (1.0 - h);
 }
 
 fn _smooth_intersection(d1: f64, d2: f64, k: f64) -> f64 {
-    let h = clamp( 0.5 - 0.5*(d2-d1)/k, 0.0, 1.0 );
-    return lerp( d2, d1, h ) + k*h*(1.0-h);
+    let h = clamp(0.5 - 0.5 * (d2 - d1) / k, 0.0, 1.0);
+    return lerp(d2, d1, h) + k * h * (1.0 - h);
 }
 
 ////////////////////////////////////////////////////////////////
@@ -273,21 +274,21 @@ fn _rot_x(p: Point, a: f64) -> Point {
     let s = a.sin();
     let c = a.cos();
 
-    return point![p.x, p.y * c + p.z * s, -s * p.y + c * p.z]
+    return point![p.x, p.y * c + p.z * s, -s * p.y + c * p.z];
 }
 
 fn _rot_y(p: Point, a: f64) -> Point {
     let s = a.sin();
     let c = a.cos();
-    
-    return point![c * p.x + s * p.z, p.y, -s * p.x + c * p.z]
+
+    return point![c * p.x + s * p.z, p.y, -s * p.x + c * p.z];
 }
 
 fn _rot_z(p: Point, a: f64) -> Point {
     let s = a.sin();
     let c = a.cos();
 
-    return point![c * p.x - s * p.y, s * p.x + c * p.y, p.z]
+    return point![c * p.x - s * p.y, s * p.x + c * p.y, p.z];
 }
 
 ////////// Other Math //////////

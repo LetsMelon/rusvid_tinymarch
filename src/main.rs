@@ -1,5 +1,6 @@
-use tinymarch::render;
 use std::time::Instant;
+
+use tinymarch::render;
 
 fn main() {
     let now = Instant::now();
