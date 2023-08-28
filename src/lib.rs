@@ -11,11 +11,7 @@ pub mod sdf_operations;
 pub mod signed_distance_fields;
 pub mod vector;
 
-use sdf_operations::_smooth_subtraction;
-
-use crate::math::lerp;
-use crate::signed_distance_fields::_sphere;
-use crate::vector::{reflect, vec3};
+use crate::vector::vec3;
 
 // ======================================================================
 // ======================= Data types & Constants =======================
@@ -41,7 +37,14 @@ pub const BLUE: Color = vector![0.0, 0.0, 1.0];
 // ==================== Main Loop & Render Functions ====================
 // ======================================================================
 
-pub fn render(res_x: usize, res_y: usize, samples: usize) {
+pub fn render(
+    res_x: usize,
+    res_y: usize,
+    samples: usize,
+    eval: fn(Point) -> f64,
+    sky: fn((f64, f64)) -> Color,
+    simple_shading: fn(p: Point, rd: Vector, eval: fn(Point) -> f64) -> Color,
+) {
     let ro = point![0., 0., -10.];
     let rt = point![0., 0., 0.];
 
@@ -66,14 +69,14 @@ pub fn render(res_x: usize, res_y: usize, samples: usize) {
                         let rd = ray_direction((u - 0.5, v - 0.5), ro, rt, (res_x, res_y));
 
                         // ray marching
-                        let d = ray_march(ro, rd);
+                        let d = ray_march(ro, rd, eval);
 
                         // shading
                         if d >= MAX_DIST {
                             color += sky((u, v));
                         } else {
                             let p = ro + d * rd;
-                            color += simple_shading(p, rd);
+                            color += simple_shading(p, rd, eval);
                         }
                     }
                     color *= sample_scale;
@@ -108,7 +111,7 @@ fn ray_direction(uv: (f64, f64), ro: Point, rt: Point, res: (usize, usize)) -> V
     return rd.normalize();
 }
 
-pub fn ray_march(ro: Point, rd: Vector) -> f64 {
+pub fn ray_march(ro: Point, rd: Vector, eval: fn(Point) -> f64) -> f64 {
     let mut d = 0.0;
 
     for _ in 0..MAX_STEPS {
@@ -122,60 +125,12 @@ pub fn ray_march(ro: Point, rd: Vector) -> f64 {
     return d;
 }
 
-fn simple_shading(p: Point, rd: Vector) -> Color {
-    let n = gradient(p);
-    let mut color = vector![0.2, 0.8, 1.];
-
-    // lighting
-    let light1 = n.dot(&vector![1., -1., -1.].normalize()) * 0.5 + 0.5;
-    let light2 = n.dot(&vector![-1., -1., -1.].normalize()) * 0.5 + 0.5;
-    let illumination = 0.5 * light1 + 0.5 * light2;
-
-    // fake fresnel
-    let n_dot_v = n.dot(&rd) + 1.;
-    let fresnel = n_dot_v * n_dot_v * 0.45;
-
-    // Specular highlights
-    let r = reflect(vector![1., 0., 0.].normalize(), n);
-    let specular = vec3(1.0) * r.dot(&rd).max(0.0).powf(10.0) * 0.08;
-
-    color *= illumination;
-    color += vec3(fresnel);
-    color += specular;
-
-    return color;
-}
-
-// Environment
-pub fn sky(uv: (f64, f64)) -> Color {
-    // Background
-    let mut c = vector![0.1, 0.7, 1.];
-
-    c += vec3(lerp(0.2, 0.4, 1.0 - uv.1));
-    c += vec3(lerp(0.2, 0.4, uv.0));
-
-    return c;
-}
-
-////////////////////////////////////////////////////////////////
-// Main Scene SDF
-////////////////////////////////////////////////////////////////
-
-pub fn eval(p: Point) -> f64 {
-    let s1 = _sphere(p, point![0.0, 0.0, 0.0], 1.);
-    let s2 = _sphere(p, point![1., -0.6, -1.], 0.9);
-    // return _boolean_union(s1, s2);
-    return _smooth_subtraction(s1, s2, 0.05);
-    // return _smooth_intersection(s1, s2, 0.5);
-}
-
 ////////////////////////////////////////////////////////////////
 // Signed Distance Fields
 ////////////////////////////////////////////////////////////////
-// Main reference: https://iquilezles.org/articles/distfunctions/
 
 // Gradient of a Signed Distance Field
-pub fn gradient(p: Point) -> Vector {
+pub fn gradient(p: Point, eval: fn(Point) -> f64) -> Vector {
     let epsilon = 0.0001;
     let dx = Vector3::new(epsilon, 0., 0.);
     let dy = Vector3::new(0., epsilon, 0.);
